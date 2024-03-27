@@ -4,7 +4,11 @@ import cors from 'cors';
 import express from 'express';
 import { readFile } from 'node:fs/promises';
 import { authMiddleware, handleLogin } from './auth.js';
+import { WebSocketServer } from 'ws';
+import { createServer as createHttpServer } from 'node:http';
+import { useServer as useWsServer } from 'graphql-ws/lib/use/ws';
 import { resolvers } from './resolvers.js';
+import { makeExecutableSchema } from '@graphql-tools/schema';
 
 const PORT = 9000;
 
@@ -21,13 +25,20 @@ function getContext({ req }) {
 }
 
 const typeDefs = await readFile('./schema.graphql', 'utf8');
+const schema = makeExecutableSchema({ typeDefs, resolvers });
+
 const apolloServer = new ApolloServer({ typeDefs, resolvers });
 await apolloServer.start();
 app.use('/graphql', authMiddleware, apolloMiddleware(apolloServer, {
   context: getContext,
 }));
 
-app.listen({ port: PORT }, () => {
+
+const httpServer = createHttpServer(app);
+const webServer = new WebSocketServer({ server: httpServer, path: '/graphql' });
+useWsServer({ schema }, webServer);
+
+httpServer.listen({ port: PORT }, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`GraphQL endpoint: http://localhost:${PORT}/graphql`);
 });
